@@ -10,6 +10,8 @@ import os
 from math import radians, cos, sin, asin, sqrt
 import requests
 from dotenv import load_dotenv
+import time
+import random
 
 # Load environment variables
 load_dotenv()
@@ -54,6 +56,18 @@ if 'emergency_contacts' not in st.session_state:
 if 'user_location' not in st.session_state:
     # Default location (can be updated with geolocation)
     st.session_state.user_location = {"latitude": 22.5726, "longitude": 88.3639}
+if 'location_tracking' not in st.session_state:
+    st.session_state.location_tracking = False
+if 'location_sharing' not in st.session_state:
+    st.session_state.location_sharing = False
+if 'location_sharing_code' not in st.session_state:
+    st.session_state.location_sharing_code = str(uuid.uuid4())[:8]
+if 'location_history' not in st.session_state:
+    st.session_state.location_history = []
+if 'last_location_update' not in st.session_state:
+    st.session_state.last_location_update = datetime.now().isoformat()
+if 'tracking_thread_active' not in st.session_state:
+    st.session_state.tracking_thread_active = False
 
 # Initialize agents
 @st.cache_resource
@@ -109,6 +123,224 @@ def get_map(center_lat, center_lng, zoom=13):
         tiles="OpenStreetMap"  # Explicitly use OpenStreetMap tiles
     )
     return m
+
+# Function to simulate getting current location
+def get_current_location():
+    """Simulate getting the current location"""
+    # In a real app, this would use the browser's geolocation API
+    # For this demo, we'll just return the current location from session state
+    # or simulate a small movement if tracking is active
+    
+    current_lat = st.session_state.user_location["latitude"]
+    current_lng = st.session_state.user_location["longitude"]
+    
+    # If tracking is active, simulate a small movement
+    if st.session_state.location_tracking:
+        # Add a small random movement (up to 0.001 degrees in any direction)
+        lat_movement = random.uniform(-0.0005, 0.0005)
+        lng_movement = random.uniform(-0.0005, 0.0005)
+        
+        current_lat += lat_movement
+        current_lng += lng_movement
+    
+    # Update the session state
+    timestamp = datetime.now().isoformat()
+    st.session_state.user_location = {
+        "latitude": current_lat,
+        "longitude": current_lng
+    }
+    st.session_state.last_location_update = timestamp
+    
+    # Add to location history (keep last 100 points)
+    st.session_state.location_history.append({
+        "latitude": current_lat,
+        "longitude": current_lng,
+        "timestamp": timestamp,
+        "accuracy": random.uniform(5, 20)  # Simulate accuracy between 5-20 meters
+    })
+    
+    if len(st.session_state.location_history) > 100:
+        st.session_state.location_history = st.session_state.location_history[-100:]
+    
+    return {
+        "latitude": current_lat,
+        "longitude": current_lng,
+        "timestamp": timestamp,
+        "accuracy": st.session_state.location_history[-1]["accuracy"]
+    }
+
+# Function to start location tracking
+def start_location_tracking():
+    """Start simulated location tracking"""
+    st.session_state.location_tracking = True
+    
+    # Get initial location
+    get_current_location()
+    
+    return True
+
+# Function to stop location tracking
+def stop_location_tracking():
+    """Stop simulated location tracking"""
+    st.session_state.location_tracking = False
+    return True
+
+# Function to update location periodically (called by a button)
+def update_tracked_location():
+    """Update location if tracking is active"""
+    if st.session_state.location_tracking:
+        location_data = get_current_location()
+        return location_data
+    return None
+
+# Function to generate a location sharing link
+def generate_location_sharing_link():
+    # In a real app, this would create a unique URL that others can access
+    # For this demo, we'll just generate a code
+    sharing_code = st.session_state.location_sharing_code
+    return f"https://example.com/share-location/{sharing_code}"
+
+# JavaScript for getting live location
+def get_geolocation_js():
+    return """
+    <script>
+    // Function to get the current position
+    function getLocation() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    // Success callback
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    const accuracy = position.coords.accuracy;
+                    const timestamp = new Date().toISOString();
+                    
+                    // Send to Streamlit
+                    const data = {
+                        latitude: lat,
+                        longitude: lng,
+                        accuracy: accuracy,
+                        timestamp: timestamp
+                    };
+                    
+                    // Use window.parent.postMessage to communicate with Streamlit
+                    window.parent.postMessage({
+                        type: "streamlit:setComponentValue",
+                        value: data
+                    }, "*");
+                },
+                function(error) {
+                    // Error callback
+                    console.error("Error getting location:", error.message);
+                    
+                    // Send error to Streamlit
+                    window.parent.postMessage({
+                        type: "streamlit:setComponentValue",
+                        value: {error: error.message}
+                    }, "*");
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 5000,
+                    maximumAge: 0
+                }
+            );
+        } else {
+            console.error("Geolocation is not supported by this browser.");
+            
+            // Send error to Streamlit
+            window.parent.postMessage({
+                type: "streamlit:setComponentValue",
+                value: {error: "Geolocation is not supported by this browser."}
+            }, "*");
+        }
+    }
+    
+    // Function to watch position continuously
+    function watchLocation() {
+        if (navigator.geolocation) {
+            const watchId = navigator.geolocation.watchPosition(
+                function(position) {
+                    // Success callback
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    const accuracy = position.coords.accuracy;
+                    const timestamp = new Date().toISOString();
+                    
+                    // Send to Streamlit
+                    const data = {
+                        latitude: lat,
+                        longitude: lng,
+                        accuracy: accuracy,
+                        timestamp: timestamp,
+                        watchId: watchId
+                    };
+                    
+                    // Use window.parent.postMessage to communicate with Streamlit
+                    window.parent.postMessage({
+                        type: "streamlit:setComponentValue",
+                        value: data
+                    }, "*");
+                },
+                function(error) {
+                    // Error callback
+                    console.error("Error watching location:", error.message);
+                    
+                    // Send error to Streamlit
+                    window.parent.postMessage({
+                        type: "streamlit:setComponentValue",
+                        value: {error: error.message, watchId: watchId}
+                    }, "*");
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 5000,
+                    maximumAge: 0
+                }
+            );
+            
+            return watchId;
+        } else {
+            console.error("Geolocation is not supported by this browser.");
+            
+            // Send error to Streamlit
+            window.parent.postMessage({
+                type: "streamlit:setComponentValue",
+                value: {error: "Geolocation is not supported by this browser."}
+            }, "*");
+            
+            return null;
+        }
+    }
+    
+    // Function to stop watching location
+    function stopWatchingLocation(watchId) {
+        if (navigator.geolocation && watchId) {
+            navigator.geolocation.clearWatch(watchId);
+            console.log("Stopped watching location");
+            
+            // Send confirmation to Streamlit
+            window.parent.postMessage({
+                type: "streamlit:setComponentValue",
+                value: {stopped: true, watchId: watchId}
+            }, "*");
+        }
+    }
+    
+    // Execute the requested function based on the action parameter
+    const params = new URLSearchParams(window.location.search);
+    const action = params.get('action');
+    
+    if (action === 'get') {
+        getLocation();
+    } else if (action === 'watch') {
+        watchLocation();
+    } else if (action === 'stop') {
+        const watchId = parseInt(params.get('watchId'));
+        stopWatchingLocation(watchId);
+    }
+    </script>
+    """
 
 # Custom CSS
 st.markdown("""
@@ -188,6 +420,27 @@ st.markdown("""
         border-radius: 5px;
         border: 1px solid #ddd;
     }
+    .location-tracking-active {
+        background-color: #e6f7ff;
+        border-left: 4px solid #1890ff;
+        padding: 10px;
+        border-radius: 5px;
+        margin-bottom: 15px;
+    }
+    .location-sharing-active {
+        background-color: #f6ffed;
+        border-left: 4px solid #52c41a;
+        padding: 10px;
+        border-radius: 5px;
+        margin-bottom: 15px;
+    }
+    .sharing-code {
+        font-family: monospace;
+        background-color: #f5f5f5;
+        padding: 5px 10px;
+        border-radius: 3px;
+        border: 1px solid #ddd;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -216,6 +469,7 @@ with st.sidebar:
             "🚨 Emergency Alert System",
             "🧭 Personalized Safety Navigator",
             "📝 Anonymous Incident Reporting",
+            "📍 Live Location Tracking",
             "👥 Emergency Contacts",
             "⚙️ Settings"
         ])
@@ -227,11 +481,33 @@ with st.sidebar:
         # Display user ID
         st.info(f"User ID: {st.session_state.user_id[:8]}...")
         
+        # Location status
+        if st.session_state.location_tracking:
+            st.markdown("""
+            <div class="location-tracking-active">
+                📍 Location tracking is active
+            </div>
+            """, unsafe_allow_html=True)
+        
+        if st.session_state.location_sharing:
+            st.markdown(f"""
+            <div class="location-sharing-active">
+                🔗 Location sharing is active<br>
+                Code: <span class="sharing-code">{st.session_state.location_sharing_code}</span>
+            </div>
+            """, unsafe_allow_html=True)
+        
         # Emergency button
         st.markdown("---")
         
         # SOS Button
         if st.button("🆘 SOS EMERGENCY", use_container_width=True, type="primary"):
+            # Get current location
+            location_data = get_current_location()
+            
+            # Use the current location or the last known location
+            current_location = st.session_state.user_location
+            
             # Get emergency contacts
             emergency_contacts = db.get_emergency_contacts(st.session_state.user_id)
             
@@ -241,7 +517,7 @@ with st.sidebar:
                 # Send SOS notifications
                 notification_results = sms_service.send_sos_notifications(
                     user_name="User",  # In a real app, get the user's name
-                    location=st.session_state.user_location,
+                    location=current_location,
                     message="EMERGENCY! I need immediate assistance!",
                     emergency_contacts=emergency_contacts
                 )
@@ -249,8 +525,8 @@ with st.sidebar:
                 # Record the SOS event
                 db.create_sos(
                     user_id=st.session_state.user_id,
-                    latitude=st.session_state.user_location["latitude"],
-                    longitude=st.session_state.user_location["longitude"],
+                    latitude=current_location["latitude"],
+                    longitude=current_location["longitude"],
                     message="EMERGENCY! I need immediate assistance!",
                     contacts_notified=[r["contact_phone"] for r in notification_results if r["status"] in ["sent", "simulated"]]
                 )
@@ -279,6 +555,7 @@ if page == "🏠 Home":
         1. **Emergency Alert System**: Real-time alerts for security threats and emergencies
         2. **Personalized Safety Navigator**: AI-driven assistant for safe navigation and real-time guidance
         3. **Anonymous Incident Reporting**: Securely report incidents and connect with community support
+        4. **Live Location Tracking**: Share your real-time location with trusted contacts
         
         To get started, click "Initialize AI Agents" in the sidebar.
         """)
@@ -292,7 +569,14 @@ if page == "🏠 Home":
         For more information, refer to the documentation or contact support.
         """)
     else:
-        col1, col2, col3 = st.columns(3)
+        # Get current location
+        if st.button("Update My Location"):
+            with st.spinner("Getting your location..."):
+                location_data = get_current_location()
+                if location_data:
+                    st.success(f"Location updated: {location_data['latitude']:.4f}, {location_data['longitude']:.4f}")
+        
+        col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             st.markdown("<div class='card'>", unsafe_allow_html=True)
@@ -318,6 +602,14 @@ if page == "🏠 Home":
             st.button("Go to Incident Reporting", key="goto_reporting", on_click=lambda: st.session_state.update({"page": "📝 Anonymous Incident Reporting"}))
             st.markdown("</div>", unsafe_allow_html=True)
         
+        with col4:
+            st.markdown("<div class='card'>", unsafe_allow_html=True)
+            st.image("https://img.icons8.com/color/96/000000/location.png", width=50)
+            st.markdown("### Live Location Tracking")
+            st.markdown("Share your real-time location with trusted contacts")
+            st.button("Go to Location Tracking", key="goto_location", on_click=lambda: st.session_state.update({"page": "📍 Live Location Tracking"}))
+            st.markdown("</div>", unsafe_allow_html=True)
+        
         # Safety statistics
         st.markdown("<h2 class='sub-header'>Safety Overview</h2>", unsafe_allow_html=True)
         
@@ -330,6 +622,9 @@ if page == "🏠 Home":
         
         # Sample map
         st.markdown("<h2 class='sub-header'>Safety Map</h2>", unsafe_allow_html=True)
+        
+        # Get current location
+        location_data = get_current_location()
         
         # Create a map centered at user's location
         m = get_map(st.session_state.user_location["latitude"], 
@@ -391,6 +686,282 @@ if page == "🏠 Home":
         for activity in activities:
             st.markdown(f"**{activity['time']}** - {activity['type']}: {activity['description']}")
 
+# Live Location Tracking page
+elif page == "📍 Live Location Tracking" and handlers:
+    st.markdown("<h2 class='sub-header'>Live Location Tracking</h2>", unsafe_allow_html=True)
+    
+    # If tracking is active, update location periodically
+    if st.session_state.location_tracking:
+        update_tracked_location()
+    
+    tabs = st.tabs(["My Location", "Location Sharing", "Track History"])
+    
+    with tabs[0]:
+        st.markdown("### Current Location")
+        st.markdown("View and update your current location.")
+        
+        # Location tracking controls
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if not st.session_state.location_tracking:
+                if st.button("Start Location Tracking", type="primary"):
+                    with st.spinner("Starting location tracking..."):
+                        if start_location_tracking():
+                            st.success("Location tracking started!")
+                            st.rerun()
+            else:
+                if st.button("Stop Location Tracking", type="primary"):
+                    with st.spinner("Stopping location tracking..."):
+                        if stop_location_tracking():
+                            st.success("Location tracking stopped!")
+                            st.rerun()
+        
+        with col2:
+            if st.button("Get Current Location"):
+                with st.spinner("Getting your location..."):
+                    location_data = get_current_location()
+                    if location_data:
+                        st.success(f"Location updated: {location_data['latitude']:.4f}, {location_data['longitude']:.4f}")
+                        st.rerun()
+        
+        # Manual location input
+        st.markdown("### Manual Location Input")
+        st.markdown("You can manually set your location by entering coordinates or clicking on the map.")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            manual_lat = st.number_input("Latitude", value=st.session_state.user_location["latitude"], format="%.6f", step=0.001)
+        
+        with col2:
+            manual_lng = st.number_input("Longitude", value=st.session_state.user_location["longitude"], format="%.6f", step=0.001)
+        
+        if st.button("Set Manual Location"):
+            st.session_state.user_location = {"latitude": manual_lat, "longitude": manual_lng}
+            st.session_state.last_location_update = datetime.now().isoformat()
+            
+            # Add to location history
+            st.session_state.location_history.append({
+                "latitude": manual_lat,
+                "longitude": manual_lng,
+                "timestamp": st.session_state.last_location_update,
+                "accuracy": 10.0  # Default accuracy for manual input
+            })
+            
+            if len(st.session_state.location_history) > 100:
+                st.session_state.location_history = st.session_state.location_history[-100:]
+            
+            st.success(f"Location manually set to: {manual_lat:.6f}, {manual_lng:.6f}")
+            st.rerun()
+        
+        # Display current location
+        st.markdown("### Location Details")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Latitude", f"{st.session_state.user_location['latitude']:.6f}")
+        
+        with col2:
+            st.metric("Longitude", f"{st.session_state.user_location['longitude']:.6f}")
+        
+        with col3:
+            st.metric("Last Updated", st.session_state.last_location_update.split('T')[1].split('.')[0])
+        
+        # Show location on map
+        st.markdown("### Location Map")
+        
+        # Create a map centered at user's location
+        m = get_map(st.session_state.user_location["latitude"], 
+                   st.session_state.user_location["longitude"],
+                   zoom=15)
+        
+        # Add user marker
+        folium.Marker(
+            location=[st.session_state.user_location["latitude"], 
+                     st.session_state.user_location["longitude"]],
+            popup="Your Current Location",
+            icon=folium.Icon(color="blue", icon="user")
+        ).add_to(m)
+        
+        # Add accuracy circle if available
+        if st.session_state.location_history and "accuracy" in st.session_state.location_history[-1]:
+            accuracy = st.session_state.location_history[-1]["accuracy"]
+            folium.Circle(
+                location=[st.session_state.user_location["latitude"], 
+                         st.session_state.user_location["longitude"]],
+                radius=accuracy,  # Accuracy in meters
+                color='blue',
+                fill=True,
+                fill_opacity=0.1,
+                tooltip=f'Accuracy: {accuracy:.1f} meters'
+            ).add_to(m)
+        
+        # Display the map
+        folium_static(m)
+        
+        # Location tracking status
+        if st.session_state.location_tracking:
+            st.info("📍 Location tracking is active. Your location will be updated automatically.")
+            
+            # Add a button to manually update location while tracking
+            if st.button("Update Tracked Location"):
+                location_data = update_tracked_location()
+                if location_data:
+                    st.success(f"Location updated: {location_data['latitude']:.6f}, {location_data['longitude']:.6f}")
+                    st.rerun()
+        else:
+            st.warning("⚠️ Location tracking is not active. Click 'Start Location Tracking' to enable automatic updates.")
+    
+    with tabs[1]:
+        st.markdown("### Share Your Location")
+        st.markdown("Share your real-time location with trusted contacts.")
+        
+        # Location sharing controls
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if not st.session_state.location_sharing:
+                if st.button("Start Location Sharing", type="primary"):
+                    # Enable location tracking if not already enabled
+                    if not st.session_state.location_tracking:
+                        with st.spinner("Starting location tracking..."):
+                            start_location_tracking()
+                    
+                    # Generate sharing code if needed
+                    if not st.session_state.location_sharing_code:
+                        st.session_state.location_sharing_code = str(uuid.uuid4())[:8]
+                    
+                    st.session_state.location_sharing = True
+                    st.success("Location sharing started!")
+                    st.rerun()
+            else:
+                if st.button("Stop Location Sharing", type="primary"):
+                    st.session_state.location_sharing = False
+                    st.success("Location sharing stopped!")
+                    st.rerun()
+        
+        with col2:
+            if st.button("Generate New Sharing Code"):
+                st.session_state.location_sharing_code = str(uuid.uuid4())[:8]
+                st.success("New sharing code generated!")
+                st.rerun()
+        
+        # Display sharing information
+        if st.session_state.location_sharing:
+            st.markdown("### Sharing Details")
+            
+            st.markdown(f"""
+            <div class="card">
+                <h4>Your location is being shared</h4>
+                <p>Share this code with trusted contacts:</p>
+                <h3 class="sharing-code">{st.session_state.location_sharing_code}</h3>
+                <p class="info-text">They can use this code to view your real-time location</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Share via SMS option
+            st.markdown("### Share via SMS")
+            
+            # Get emergency contacts
+            emergency_contacts = db.get_emergency_contacts(st.session_state.user_id)
+            
+            if emergency_contacts:
+                selected_contacts = st.multiselect(
+                    "Select contacts to share with",
+                    options=[contact["name"] for contact in emergency_contacts],
+                    format_func=lambda x: x
+                )
+                
+                if st.button("Send Sharing Link via SMS"):
+                    if selected_contacts:
+                        sharing_link = generate_location_sharing_link()
+                        
+                        # Send SMS to each selected contact
+                        sent_count = 0
+                        for contact_name in selected_contacts:
+                            # Find the contact in the list
+                            contact = next((c for c in emergency_contacts if c["name"] == contact_name), None)
+                            
+                            if contact:
+                                # Create message
+                                message = f"I'm sharing my live location with you. Use this code to track me: {st.session_state.location_sharing_code}\nOr click this link: {sharing_link}"
+                                
+                                # Send SMS
+                                result = sms_service.send_sms(contact["phone"], message)
+                                
+                                if result["status"] in ["sent", "simulated"]:
+                                    sent_count += 1
+                        
+                        st.success(f"Location sharing information sent to {sent_count} contacts!")
+                    else:
+                        st.error("Please select at least one contact.")
+            else:
+                st.warning("No emergency contacts found. Add contacts in the Emergency Contacts page.")
+        else:
+            st.info("Location sharing is not active. Click 'Start Location Sharing' to share your location with trusted contacts.")
+    
+    with tabs[2]:
+        st.markdown("### Location History")
+        st.markdown("View your location history and movement patterns.")
+        
+        if st.session_state.location_history:
+            # Display history on map
+            st.markdown("### Movement Map")
+            
+            # Create a map centered at the average of all points
+            avg_lat = sum(point["latitude"] for point in st.session_state.location_history) / len(st.session_state.location_history)
+            avg_lng = sum(point["longitude"] for point in st.session_state.location_history) / len(st.session_state.location_history)
+            
+            m = get_map(avg_lat, avg_lng, zoom=14)
+            
+            # Add markers for each point
+            for i, point in enumerate(st.session_state.location_history):
+                # Only add markers for every 5th point to avoid clutter
+                if i % 5 == 0 or i == len(st.session_state.location_history) - 1:
+                    folium.Marker(
+                        location=[point["latitude"], point["longitude"]],
+                        popup=f"Time: {point['timestamp'].split('T')[1].split('.')[0]}",
+                        icon=folium.Icon(color="blue" if i < len(st.session_state.location_history) - 1 else "red", 
+                                        icon="record" if i < len(st.session_state.location_history) - 1 else "user")
+                    ).add_to(m)
+            
+            # Add a line connecting all points
+            folium.PolyLine(
+                locations=[[point["latitude"], point["longitude"]] for point in st.session_state.location_history],
+                color="blue",
+                weight=3,
+                opacity=0.7
+            ).add_to(m)
+            
+            # Display the map
+            folium_static(m)
+            
+            # Display history table
+            st.markdown("### Location Data")
+            
+            # Convert to DataFrame for display
+            history_df = pd.DataFrame([
+                {
+                    "Time": point["timestamp"].split('T')[1].split('.')[0],
+                    "Latitude": f"{point['latitude']:.6f}",
+                    "Longitude": f"{point['longitude']:.6f}",
+                    "Accuracy (m)": f"{point.get('accuracy', 'N/A')}"
+                }
+                for point in reversed(st.session_state.location_history)
+            ])
+            
+            st.dataframe(history_df, use_container_width=True)
+            
+            # Clear history option
+            if st.button("Clear Location History"):
+                st.session_state.location_history = []
+                st.success("Location history cleared!")
+                st.rerun()
+        else:
+            st.info("No location history available. Start location tracking to record your movements.")
+
 # Emergency Alert System page
 elif page == "🚨 Emergency Alert System" and handlers:
     st.markdown("<h2 class='sub-header'>Emergency Alert System</h2>", unsafe_allow_html=True)
@@ -407,6 +978,14 @@ elif page == "🚨 Emergency Alert System" and handlers:
         # Location input with map
         st.markdown("### Alert Location")
         
+        # Get current location button
+        if st.button("Use My Current Location"):
+            with st.spinner("Getting your location..."):
+                location_data = get_current_location()
+                if location_data:
+                    st.success(f"Location updated: {location_data['latitude']:.4f}, {location_data['longitude']:.4f}")
+                    st.rerun()
+        
         # Location search (simplified)
         location_search = st.text_input("Search location (e.g., 'New York, NY')", 
                                        key="alert_location_search",
@@ -414,9 +993,9 @@ elif page == "🚨 Emergency Alert System" and handlers:
         
         col1, col2 = st.columns(2)
         with col1:
-            latitude = st.number_input("Latitude", value=st.session_state.user_location["latitude"], format="%.4f")
+            latitude = st.number_input("Latitude", value=st.session_state.user_location["latitude"], format="%.6f")
         with col2:
-            longitude = st.number_input("Longitude", value=st.session_state.user_location["longitude"], format="%.4f")
+            longitude = st.number_input("Longitude", value=st.session_state.user_location["longitude"], format="%.6f")
         
         # Show location on map
         alert_map = get_map(latitude, longitude, zoom=15)
@@ -464,6 +1043,14 @@ elif page == "🚨 Emergency Alert System" and handlers:
         # Location input for viewing alerts
         st.markdown("### Search Area")
         
+        # Get current location button
+        if st.button("Use My Current Location", key="view_use_current"):
+            with st.spinner("Getting your location..."):
+                location_data = get_current_location()
+                if location_data:
+                    st.success(f"Location updated: {location_data['latitude']:.4f}, {location_data['longitude']:.4f}")
+                    st.rerun()
+        
         # Location search (simplified)
         view_location_search = st.text_input("Search location (e.g., 'New York, NY')", 
                                            key="view_location_search",
@@ -471,9 +1058,9 @@ elif page == "🚨 Emergency Alert System" and handlers:
         
         col1, col2, col3 = st.columns(3)
         with col1:
-            view_latitude = st.number_input("Latitude", value=st.session_state.user_location["latitude"], format="%.4f", key="view_lat")
+            view_latitude = st.number_input("Latitude", value=st.session_state.user_location["latitude"], format="%.6f", key="view_lat")
         with col2:
-            view_longitude = st.number_input("Longitude", value=st.session_state.user_location["longitude"], format="%.4f", key="view_lng")
+            view_longitude = st.number_input("Longitude", value=st.session_state.user_location["longitude"], format="%.6f", key="view_lng")
         with col3:
             radius = st.number_input("Radius (km)", value=5.0, min_value=0.1, max_value=50.0)
         
@@ -628,7 +1215,7 @@ elif page == "🧭 Personalized Safety Navigator" and handlers:
                     if ec_name and ec_phone:
                         db.add_emergency_contact(st.session_state.user_id, ec_name, ec_phone)
                     
-                    st.experimental_rerun()
+                    st.rerun()
                 else:
                     st.error("Failed to save profile. Please try again.")
         
@@ -638,15 +1225,24 @@ elif page == "🧭 Personalized Safety Navigator" and handlers:
             
             # Starting point
             st.markdown("##### Starting Point")
+            
+            # Get current location button
+            if st.button("Use My Current Location", key="start_use_current"):
+                with st.spinner("Getting your location..."):
+                    location_data = get_current_location()
+                    if location_data:
+                        st.success(f"Starting location updated: {location_data['latitude']:.4f}, {location_data['longitude']:.4f}")
+                        st.rerun()
+            
             start_location_search = st.text_input("Search starting location", 
                                                 key="start_location_search",
                                                 help="Enter a location to search")
             
             col1, col2 = st.columns(2)
             with col1:
-                start_lat = st.number_input("Latitude", value=st.session_state.user_location["latitude"], format="%.4f", key="start_lat")
+                start_lat = st.number_input("Latitude", value=st.session_state.user_location["latitude"], format="%.6f", key="start_lat")
             with col2:
-                start_lng = st.number_input("Longitude", value=st.session_state.user_location["longitude"], format="%.4f", key="start_lng")
+                start_lng = st.number_input("Longitude", value=st.session_state.user_location["longitude"], format="%.6f", key="start_lng")
             
             # Destination
             st.markdown("##### Destination")
@@ -656,11 +1252,14 @@ elif page == "🧭 Personalized Safety Navigator" and handlers:
             
             col1, col2 = st.columns(2)
             with col1:
-                dest_lat = st.number_input("Latitude", value=st.session_state.user_location["latitude"] + 0.01, format="%.4f", key="dest_lat")
+                dest_lat = st.number_input("Latitude", value=st.session_state.user_location["latitude"] + 0.01, format="%.6f", key="dest_lat")
             with col2:
-                dest_lng = st.number_input("Longitude", value=st.session_state.user_location["longitude"] + 0.01, format="%.4f", key="dest_lng")
+                dest_lng = st.number_input("Longitude", value=st.session_state.user_location["longitude"] + 0.01, format="%.6f", key="dest_lng")
             
             travel_mode = st.selectbox("Travel Mode", ["walking", "driving", "bicycling", "transit"])
+            
+            # Enable live tracking
+            enable_tracking = st.checkbox("Enable live location tracking during journey", value=True)
             
             # Get directions
             origin = {"latitude": start_lat, "longitude": start_lng}
@@ -717,14 +1316,17 @@ elif page == "🧭 Personalized Safety Navigator" and handlers:
             folium_static(m)
             
             if st.button("Start Journey", type="primary"):
+                # Start location tracking if enabled
+                if enable_tracking and not st.session_state.location_tracking:
+                    with st.spinner("Starting location tracking..."):
+                        start_location_tracking()
+                
                 start_location = {"latitude": start_lat, "longitude": start_lng}
                 destination = {"latitude": dest_lat, "longitude": dest_lng}
                 
                 with st.spinner("Analyzing route safety..."):
                     response = handlers["navigator_handler"].start_journey(
                         st.session_state.user_id, 
-                        start_location, 
-                        destination, 
                         start_location, 
                         destination, 
                         travel_mode
@@ -778,12 +1380,20 @@ elif page == "🧭 Personalized Safety Navigator" and handlers:
             # Update location
             st.markdown("#### Update Your Location")
             
+            # Get current location button
+            if st.button("Use My Current Location", key="journey_use_current"):
+                with st.spinner("Getting your location..."):
+                    location_data = get_current_location()
+                    if location_data:
+                        st.success(f"Location updated: {location_data['latitude']:.4f}, {location_data['longitude']:.4f}")
+                        st.rerun()
+            
             col1, col2 = st.columns(2)
             
             with col1:
-                current_lat = st.number_input("Current Latitude", value=st.session_state.user_location["latitude"], format="%.4f")
+                current_lat = st.number_input("Current Latitude", value=st.session_state.user_location["latitude"], format="%.6f")
             with col2:
-                current_lng = st.number_input("Current Longitude", value=st.session_state.user_location["longitude"], format="%.4f")
+                current_lng = st.number_input("Current Longitude", value=st.session_state.user_location["longitude"], format="%.6f")
             
             # Update user location in session state
             st.session_state.user_location = {"latitude": current_lat, "longitude": current_lng}
@@ -826,8 +1436,34 @@ elif page == "🧭 Personalized Safety Navigator" and handlers:
                 opacity=0.7
             ).add_to(m)
             
+            # Add a line from current location to destination
+            current_to_dest = get_directions(
+                {"latitude": current_lat, "longitude": current_lng},
+                journey["destination"],
+                journey["travel_mode"]
+            )
+            current_to_dest_coords = [[point["lat"], point["lng"]] for point in current_to_dest]
+            folium.PolyLine(
+                locations=current_to_dest_coords,
+                color="green",
+                weight=3,
+                opacity=0.7,
+                dash_array="5"
+            ).add_to(m)
+            
             # Display the map
             folium_static(m)
+            
+            # Location tracking status
+            if st.session_state.location_tracking:
+                st.info("📍 Live location tracking is active. Your location is being updated automatically.")
+            else:
+                st.warning("⚠️ Live location tracking is not active. Enable tracking for real-time updates.")
+                if st.button("Enable Live Tracking"):
+                    with st.spinner("Starting location tracking..."):
+                        if start_location_tracking():
+                            st.success("Location tracking started!")
+                            st.rerun()
             
             if st.button("Update Location"):
                 current_location = {"latitude": current_lat, "longitude": current_lng}
@@ -892,6 +1528,50 @@ elif page == "🧭 Personalized Safety Navigator" and handlers:
                 else:
                     st.error("Failed to update location. Please try again.")
             
+            # Share journey option
+            st.markdown("### Share Journey Status")
+            
+            if st.button("Share My Journey Status"):
+                # Get emergency contacts
+                emergency_contacts = db.get_emergency_contacts(st.session_state.user_id)
+                
+                if emergency_contacts:
+                    selected_contacts = st.multiselect(
+                        "Select contacts to share with",
+                        options=[contact["name"] for contact in emergency_contacts],
+                        format_func=lambda x: x
+                    )
+                    
+                    if st.button("Send Journey Status via SMS", key="send_journey_status"):
+                        if selected_contacts:
+                            # Calculate distance to destination
+                            distance_to_dest = calculate_distance(
+                                current_lat, current_lng,
+                                journey["destination"]["latitude"], journey["destination"]["longitude"]
+                            )
+                            
+                            # Create message
+                            message = f"I'm currently on a journey. My current location is: {current_lat:.4f}, {current_lng:.4f}. I'm {distance_to_dest:.2f} km away from my destination. View my location: https://www.openstreetmap.org/?mlat={current_lat}&mlon={current_lng}#map=15/{current_lat}/{current_lng}"
+                            
+                            # Send SMS to each selected contact
+                            sent_count = 0
+                            for contact_name in selected_contacts:
+                                # Find the contact in the list
+                                contact = next((c for c in emergency_contacts if c["name"] == contact_name), None)
+                                
+                                if contact:
+                                    # Send SMS
+                                    result = sms_service.send_sms(contact["phone"], message)
+                                    
+                                    if result["status"] in ["sent", "simulated"]:
+                                        sent_count += 1
+                            
+                            st.success(f"Journey status sent to {sent_count} contacts!")
+                        else:
+                            st.error("Please select at least one contact.")
+                else:
+                    st.warning("No emergency contacts found. Add contacts in the Emergency Contacts page.")
+            
             if st.button("End Journey"):
                 with st.spinner("Ending journey..."):
                     response = handlers["navigator_handler"].end_journey(journey["id"])
@@ -899,7 +1579,12 @@ elif page == "🧭 Personalized Safety Navigator" and handlers:
                 if response["status"] == "success":
                     st.success("Journey ended successfully!")
                     st.session_state.active_journey = None
-                    st.experimental_rerun()
+                    
+                    # Stop location tracking if it was started for this journey
+                    if st.session_state.location_tracking:
+                        stop_location_tracking()
+                    
+                    st.rerun()
                 else:
                     st.error("Failed to end journey. Please try again.")
         else:
@@ -916,6 +1601,14 @@ elif page == "🧭 Personalized Safety Navigator" and handlers:
             ])
             
             emergency_description = st.text_area("Description", placeholder="Describe your emergency situation...")
+            
+            # Get current location button
+            if st.button("Use My Current Location", key="emergency_use_current"):
+                with st.spinner("Getting your location..."):
+                    location_data = get_current_location()
+                    if location_data:
+                        st.success(f"Location updated: {location_data['latitude']:.4f}, {location_data['longitude']:.4f}")
+                        st.rerun()
             
             # Get current location
             current_lat = st.session_state.user_location["latitude"]
@@ -970,12 +1663,20 @@ elif page == "🧭 Personalized Safety Navigator" and handlers:
             st.markdown("### Quick Emergency")
             st.markdown("Use this option if you need immediate help without an active journey.")
             
+            # Get current location button
+            if st.button("Use My Current Location", key="quick_emergency_use_current"):
+                with st.spinner("Getting your location..."):
+                    location_data = get_current_location()
+                    if location_data:
+                        st.success(f"Location updated: {location_data['latitude']:.4f}, {location_data['longitude']:.4f}")
+                        st.rerun()
+            
             col1, col2 = st.columns(2)
             
             with col1:
-                quick_lat = st.number_input("Your Latitude", value=st.session_state.user_location["latitude"], format="%.4f")
+                quick_lat = st.number_input("Your Latitude", value=st.session_state.user_location["latitude"], format="%.6f")
             with col2:
-                quick_lng = st.number_input("Your Longitude", value=st.session_state.user_location["longitude"], format="%.4f")
+                quick_lng = st.number_input("Your Longitude", value=st.session_state.user_location["longitude"], format="%.6f")
             
             # Update user location in session state
             st.session_state.user_location = {"latitude": quick_lat, "longitude": quick_lng}
@@ -1013,6 +1714,19 @@ elif page == "🧭 Personalized Safety Navigator" and handlers:
                         <p>Users Notified: {response["users_notified"]}</p>
                     </div>
                     """, unsafe_allow_html=True)
+                    
+                    # Also send to emergency contacts
+                    emergency_contacts = db.get_emergency_contacts(st.session_state.user_id)
+                    
+                    if emergency_contacts:
+                        notification_results = sms_service.send_sos_notifications(
+                            user_name="User",  # In a real app, get the user's name
+                            location={"latitude": quick_lat, "longitude": quick_lng},
+                            message=f"EMERGENCY! {quick_description}",
+                            emergency_contacts=emergency_contacts
+                        )
+                        
+                        st.success(f"Emergency alert also sent to {len(notification_results)} emergency contacts!")
                 else:
                     st.error("Failed to send emergency alert. Please try again.")
 
@@ -1031,6 +1745,14 @@ elif page == "📝 Anonymous Incident Reporting" and handlers:
         # Location input with map
         st.markdown("### Incident Location")
         
+        # Get current location button
+        if st.button("Use My Current Location", key="incident_use_current"):
+            with st.spinner("Getting your location..."):
+                location_data = get_current_location()
+                if location_data:
+                    st.success(f"Location updated: {location_data['latitude']:.4f}, {location_data['longitude']:.4f}")
+                    st.rerun()
+        
         # Location search (simplified)
         incident_location_search = st.text_input("Search location", 
                                                key="incident_location_search",
@@ -1038,9 +1760,9 @@ elif page == "📝 Anonymous Incident Reporting" and handlers:
         
         col1, col2 = st.columns(2)
         with col1:
-            incident_lat = st.number_input("Incident Latitude", value=st.session_state.user_location["latitude"], format="%.4f")
+            incident_lat = st.number_input("Incident Latitude", value=st.session_state.user_location["latitude"], format="%.6f")
         with col2:
-            incident_lng = st.number_input("Incident Longitude", value=st.session_state.user_location["longitude"], format="%.4f")
+            incident_lng = st.number_input("Incident Longitude", value=st.session_state.user_location["longitude"], format="%.6f")
         
         # Show location on map
         incident_map = get_map(incident_lat, incident_lng, zoom=15)
@@ -1102,6 +1824,14 @@ elif page == "📝 Anonymous Incident Reporting" and handlers:
         # Location input with map
         st.markdown("### Search Area")
         
+        # Get current location button
+        if st.button("Use My Current Location", key="view_report_use_current"):
+            with st.spinner("Getting your location..."):
+                location_data = get_current_location()
+                if location_data:
+                    st.success(f"Location updated: {location_data['latitude']:.4f}, {location_data['longitude']:.4f}")
+                    st.rerun()
+        
         # Location search (simplified)
         view_report_location_search = st.text_input("Search location", 
                                                   key="view_report_location_search",
@@ -1109,9 +1839,9 @@ elif page == "📝 Anonymous Incident Reporting" and handlers:
         
         col1, col2, col3 = st.columns(3)
         with col1:
-            view_report_lat = st.number_input("Latitude", value=st.session_state.user_location["latitude"], format="%.4f", key="view_report_lat")
+            view_report_lat = st.number_input("Latitude", value=st.session_state.user_location["latitude"], format="%.6f", key="view_report_lat")
         with col2:
-            view_report_lng = st.number_input("Longitude", value=st.session_state.user_location["longitude"], format="%.4f", key="view_report_lng")
+            view_report_lng = st.number_input("Longitude", value=st.session_state.user_location["longitude"], format="%.6f", key="view_report_lng")
         with col3:
             report_radius = st.number_input("Radius (km)", value=5.0, min_value=0.1, max_value=50.0)
         
@@ -1267,7 +1997,7 @@ elif page == "👥 Emergency Contacts" and handlers:
                 relationship=contact_relationship
             )
             st.success(f"Added {contact_name} as an emergency contact!")
-            st.experimental_rerun()
+            st.rerun()
     
     # Display existing contacts
     st.markdown("### Your Emergency Contacts")
@@ -1290,7 +2020,7 @@ elif page == "👥 Emergency Contacts" and handlers:
                     # Delete contact from database
                     db.delete_emergency_contact(contact['id'], st.session_state.user_id)
                     st.success(f"Removed {contact['name']} from emergency contacts.")
-                    st.experimental_rerun()
+                    st.rerun()
     else:
         st.info("You haven't added any emergency contacts yet.")
     
@@ -1302,6 +2032,9 @@ elif page == "👥 Emergency Contacts" and handlers:
         test_message = st.text_input("Test Message", value="This is a TEST emergency alert. Please ignore.")
         
         if st.button("Send Test Alert"):
+            # Get current location
+            location_data = get_current_location()
+            
             # Send test notifications
             notification_results = sms_service.send_sos_notifications(
                 user_name="User",  # In a real app, get the user's name
@@ -1342,6 +2075,14 @@ elif page == "⚙️ Settings" and handlers:
     # Location settings
     st.markdown("### Location Settings")
     
+    # Get current location button
+    if st.button("Get Current Location", key="settings_get_location"):
+        with st.spinner("Getting your location..."):
+            location_data = get_current_location()
+            if location_data:
+                st.success(f"Location updated: {location_data['latitude']:.4f}, {location_data['longitude']:.4f}")
+                st.rerun()
+    
     # Location search (simplified)
     location_search = st.text_input("Search location", 
                                   key="settings_location_search",
@@ -1350,9 +2091,9 @@ elif page == "⚙️ Settings" and handlers:
     col1, col2 = st.columns(2)
     
     with col1:
-        location_lat = st.number_input("Default Latitude", value=st.session_state.user_location["latitude"], format="%.4f")
+        location_lat = st.number_input("Default Latitude", value=st.session_state.user_location["latitude"], format="%.6f")
     with col2:
-        location_lng = st.number_input("Default Longitude", value=st.session_state.user_location["longitude"], format="%.4f")
+        location_lng = st.number_input("Default Longitude", value=st.session_state.user_location["longitude"], format="%.6f")
     
     if st.button("Update Default Location"):
         st.session_state.user_location = {"latitude": location_lat, "longitude": location_lng}
@@ -1366,6 +2107,17 @@ elif page == "⚙️ Settings" and handlers:
         icon=folium.Icon(color="blue", icon="user")
     ).add_to(location_map)
     folium_static(location_map)
+    
+    # Location tracking settings
+    st.markdown("### Location Tracking Settings")
+    
+    auto_track = st.checkbox("Automatically start location tracking when opening the app", value=False)
+    high_accuracy = st.checkbox("Use high accuracy mode (uses more battery)", value=True)
+    track_interval = st.slider("Location update interval (seconds)", min_value=5, max_value=60, value=15, step=5)
+    
+    if st.button("Save Tracking Settings"):
+        # In a real app, this would save to a database
+        st.success("Location tracking settings saved successfully!")
     
     # Notification settings
     st.markdown("### Notification Settings")
@@ -1406,7 +2158,7 @@ elif page == "⚙️ Settings" and handlers:
                 del st.session_state[key]
         
         st.success("Application data reset successfully!")
-        st.experimental_rerun()
+        st.rerun()
 
 else:
     if page != "🏠 Home":
