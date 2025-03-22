@@ -24,7 +24,7 @@ from sms_service import SMSService
 
 # Set page configuration
 st.set_page_config(
-    page_title="SAFE PULSE",
+    page_title="Safe Pulse",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -69,7 +69,7 @@ if 'last_location_update' not in st.session_state:
 if 'tracking_thread_active' not in st.session_state:
     st.session_state.tracking_thread_active = False
 
-# Initialize agents
+# Initialize agents automatically
 @st.cache_resource
 def get_agents_and_handlers():
     try:
@@ -88,6 +88,9 @@ def get_agents_and_handlers():
     except Exception as e:
         st.error(f"Error initializing agents: {str(e)}")
         return None
+
+# Auto-initialize agents
+handlers = get_agents_and_handlers()
 
 # Function to get directions using OpenStreetMap Nominatim (free)
 def get_directions(origin, destination, mode="walking"):
@@ -200,148 +203,6 @@ def generate_location_sharing_link():
     sharing_code = st.session_state.location_sharing_code
     return f"https://example.com/share-location/{sharing_code}"
 
-# JavaScript for getting live location
-def get_geolocation_js():
-    return """
-    <script>
-    // Function to get the current position
-    function getLocation() {
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                function(position) {
-                    // Success callback
-                    const lat = position.coords.latitude;
-                    const lng = position.coords.longitude;
-                    const accuracy = position.coords.accuracy;
-                    const timestamp = new Date().toISOString();
-                    
-                    // Send to Streamlit
-                    const data = {
-                        latitude: lat,
-                        longitude: lng,
-                        accuracy: accuracy,
-                        timestamp: timestamp
-                    };
-                    
-                    // Use window.parent.postMessage to communicate with Streamlit
-                    window.parent.postMessage({
-                        type: "streamlit:setComponentValue",
-                        value: data
-                    }, "*");
-                },
-                function(error) {
-                    // Error callback
-                    console.error("Error getting location:", error.message);
-                    
-                    // Send error to Streamlit
-                    window.parent.postMessage({
-                        type: "streamlit:setComponentValue",
-                        value: {error: error.message}
-                    }, "*");
-                },
-                {
-                    enableHighAccuracy: true,
-                    timeout: 5000,
-                    maximumAge: 0
-                }
-            );
-        } else {
-            console.error("Geolocation is not supported by this browser.");
-            
-            // Send error to Streamlit
-            window.parent.postMessage({
-                type: "streamlit:setComponentValue",
-                value: {error: "Geolocation is not supported by this browser."}
-            }, "*");
-        }
-    }
-    
-    // Function to watch position continuously
-    function watchLocation() {
-        if (navigator.geolocation) {
-            const watchId = navigator.geolocation.watchPosition(
-                function(position) {
-                    // Success callback
-                    const lat = position.coords.latitude;
-                    const lng = position.coords.longitude;
-                    const accuracy = position.coords.accuracy;
-                    const timestamp = new Date().toISOString();
-                    
-                    // Send to Streamlit
-                    const data = {
-                        latitude: lat,
-                        longitude: lng,
-                        accuracy: accuracy,
-                        timestamp: timestamp,
-                        watchId: watchId
-                    };
-                    
-                    // Use window.parent.postMessage to communicate with Streamlit
-                    window.parent.postMessage({
-                        type: "streamlit:setComponentValue",
-                        value: data
-                    }, "*");
-                },
-                function(error) {
-                    // Error callback
-                    console.error("Error watching location:", error.message);
-                    
-                    // Send error to Streamlit
-                    window.parent.postMessage({
-                        type: "streamlit:setComponentValue",
-                        value: {error: error.message, watchId: watchId}
-                    }, "*");
-                },
-                {
-                    enableHighAccuracy: true,
-                    timeout: 5000,
-                    maximumAge: 0
-                }
-            );
-            
-            return watchId;
-        } else {
-            console.error("Geolocation is not supported by this browser.");
-            
-            // Send error to Streamlit
-            window.parent.postMessage({
-                type: "streamlit:setComponentValue",
-                value: {error: "Geolocation is not supported by this browser."}
-            }, "*");
-            
-            return null;
-        }
-    }
-    
-    // Function to stop watching location
-    function stopWatchingLocation(watchId) {
-        if (navigator.geolocation && watchId) {
-            navigator.geolocation.clearWatch(watchId);
-            console.log("Stopped watching location");
-            
-            // Send confirmation to Streamlit
-            window.parent.postMessage({
-                type: "streamlit:setComponentValue",
-                value: {stopped: true, watchId: watchId}
-            }, "*");
-        }
-    }
-    
-    // Execute the requested function based on the action parameter
-    const params = new URLSearchParams(window.location.search);
-    const action = params.get('action');
-    
-    if (action === 'get') {
-        getLocation();
-    } else if (action === 'watch') {
-        watchLocation();
-    } else if (action === 'stop') {
-        const watchId = parseInt(params.get('watchId'));
-        stopWatchingLocation(watchId);
-    }
-    </script>
-    """
-
 # Custom CSS
 st.markdown("""
 <style>
@@ -452,242 +313,201 @@ with st.sidebar:
     st.image("https://img.icons8.com/color/96/000000/shield.png", width=80)
     st.title("Navigation")
     
-    # Initialize agents button
-    if not st.session_state.agents_initialized:
-        if st.button("Initialize AI Agents"):
-            with st.spinner("Initializing AI Agents..."):
-                handlers = get_agents_and_handlers()
-                if handlers:
-                    st.success("AI Agents initialized successfully!")
-                    st.rerun()
+    # Navigation
+    page = st.radio("Choose a feature:", [
+        "🏠 Home",
+        "🚨 Emergency Alert System",
+        "🧭 Personalized Safety Navigator",
+        "📝 Anonymous Incident Reporting",
+        "📍 Live Location Tracking",
+        "👥 Emergency Contacts",
+        "⚙️ Settings"
+    ])
     
-    # Navigation (only show if agents are initialized)
-    if st.session_state.agents_initialized:
-        # Navigation
-        page = st.radio("Choose a feature:", [
-            "🏠 Home",
-            "🚨 Emergency Alert System",
-            "🧭 Personalized Safety Navigator",
-            "📝 Anonymous Incident Reporting",
-            "📍 Live Location Tracking",
-            "👥 Emergency Contacts",
-            "⚙️ Settings"
-        ])
+    # User profile section
+    st.markdown("---")
+    st.subheader("User Profile")
+    
+    # Display user ID
+    st.info(f"User ID: {st.session_state.user_id[:8]}...")
+    
+    # Location status
+    if st.session_state.location_tracking:
+        st.markdown("""
+        <div class="location-tracking-active">
+            📍 Location tracking is active
+        </div>
+        """, unsafe_allow_html=True)
+    
+    if st.session_state.location_sharing:
+        st.markdown(f"""
+        <div class="location-sharing-active">
+            🔗 Location sharing is active<br>
+            Code: <span class="sharing-code">{st.session_state.location_sharing_code}</span>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Emergency button
+    st.markdown("---")
+    
+    # SOS Button
+    if st.button("🆘 SOS EMERGENCY", use_container_width=True, type="primary"):
+        # Get current location
+        location_data = get_current_location()
         
-        # User profile section
-        st.markdown("---")
-        st.subheader("User Profile")
+        # Use the current location or the last known location
+        current_location = st.session_state.user_location
         
-        # Display user ID
-        st.info(f"User ID: {st.session_state.user_id[:8]}...")
+        # Get emergency contacts
+        emergency_contacts = db.get_emergency_contacts(st.session_state.user_id)
         
-        # Location status
-        if st.session_state.location_tracking:
-            st.markdown("""
-            <div class="location-tracking-active">
-                📍 Location tracking is active
-            </div>
-            """, unsafe_allow_html=True)
-        
-        if st.session_state.location_sharing:
-            st.markdown(f"""
-            <div class="location-sharing-active">
-                🔗 Location sharing is active<br>
-                Code: <span class="sharing-code">{st.session_state.location_sharing_code}</span>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        # Emergency button
-        st.markdown("---")
-        
-        # SOS Button
-        if st.button("🆘 SOS EMERGENCY", use_container_width=True, type="primary"):
-            # Get current location
-            location_data = get_current_location()
+        if not emergency_contacts:
+            st.error("No emergency contacts found. Please add emergency contacts in the Settings page.")
+        else:
+            # Send SOS notifications
+            notification_results = sms_service.send_sos_notifications(
+                user_name="User",  # In a real app, get the user's name
+                location=current_location,
+                message="EMERGENCY! I need immediate assistance!",
+                emergency_contacts=emergency_contacts
+            )
             
-            # Use the current location or the last known location
-            current_location = st.session_state.user_location
+            # Record the SOS event
+            db.create_sos(
+                user_id=st.session_state.user_id,
+                latitude=current_location["latitude"],
+                longitude=current_location["longitude"],
+                message="EMERGENCY! I need immediate assistance!",
+                contacts_notified=[r["contact_phone"] for r in notification_results if r["status"] in ["sent", "simulated"]]
+            )
             
-            # Get emergency contacts
-            emergency_contacts = db.get_emergency_contacts(st.session_state.user_id)
-            
-            if not emergency_contacts:
-                st.error("No emergency contacts found. Please add emergency contacts in the Settings page.")
-            else:
-                # Send SOS notifications
-                notification_results = sms_service.send_sos_notifications(
-                    user_name="User",  # In a real app, get the user's name
-                    location=current_location,
-                    message="EMERGENCY! I need immediate assistance!",
-                    emergency_contacts=emergency_contacts
-                )
-                
-                # Record the SOS event
-                db.create_sos(
-                    user_id=st.session_state.user_id,
-                    latitude=current_location["latitude"],
-                    longitude=current_location["longitude"],
-                    message="EMERGENCY! I need immediate assistance!",
-                    contacts_notified=[r["contact_phone"] for r in notification_results if r["status"] in ["sent", "simulated"]]
-                )
-                
-                st.success(f"SOS alert sent to {len(notification_results)} emergency contacts!")
-        
-        st.markdown("<p class='info-text' style='text-align: center;'>Click for immediate help</p>", unsafe_allow_html=True)
-    else:
-        st.warning("Please initialize the AI Agents to continue.")
-        page = "🏠 Home"
-
-# Get handlers if agents are initialized
-handlers = get_agents_and_handlers() if st.session_state.agents_initialized else None
+            st.success(f"SOS alert sent to {len(notification_results)} emergency contacts!")
+    
+    st.markdown("<p class='info-text' style='text-align: center;'>Click for immediate help</p>", unsafe_allow_html=True)
 
 # Home page
 if page == "🏠 Home":
     st.markdown("<h2 class='sub-header'>Welcome to Safe Pulse</h2>", unsafe_allow_html=True)
     
-    if not st.session_state.agents_initialized:
-        st.info("Please click 'Initialize AI Agents' in the sidebar to access all features.")
-        
-        st.markdown("### About Safe Pulse")
-        st.markdown("""
-        This application provides three AI-powered safety features:
-        
-        1. **Emergency Alert System**: Real-time alerts for security threats and emergencies
-        2. **Personalized Safety Navigator**: AI-driven assistant for safe navigation and real-time guidance
-        3. **Anonymous Incident Reporting**: Securely report incidents and connect with community support
-        4. **Live Location Tracking**: Share your real-time location with trusted contacts
-        
-        To get started, click "Initialize AI Agents" in the sidebar.
-        """)
-        
-        st.markdown("### Setup Instructions")
-        st.markdown("""
-        1. Click "Initialize AI Agents" in the sidebar
-        2. Add your emergency contacts in the Settings page
-        3. Navigate through the different features using the sidebar
-        
-        For more information, refer to the documentation or contact support.
-        """)
-    else:
-        # Get current location
-        if st.button("Update My Location"):
-            with st.spinner("Getting your location..."):
-                location_data = get_current_location()
-                if location_data:
-                    st.success(f"Location updated: {location_data['latitude']:.4f}, {location_data['longitude']:.4f}")
-        
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.markdown("<div class='card'>", unsafe_allow_html=True)
-            st.image("https://img.icons8.com/color/96/000000/siren.png", width=50)
-            st.markdown("### Emergency Alert System")
-            st.markdown("Real-time alerts for security threats and emergencies")
-            st.button("Go to Emergency Alerts", key="goto_alerts", on_click=lambda: st.session_state.update({"page": "🚨 Emergency Alert System"}))
-            st.markdown("</div>", unsafe_allow_html=True)
-        
-        with col2:
-            st.markdown("<div class='card'>", unsafe_allow_html=True)
-            st.image("https://img.icons8.com/color/96/000000/compass.png", width=50)
-            st.markdown("### Personalized Safety Navigator")
-            st.markdown("AI-driven assistant for safe navigation and real-time guidance")
-            st.button("Go to Safety Navigator", key="goto_navigator", on_click=lambda: st.session_state.update({"page": "🧭 Personalized Safety Navigator"}))
-            st.markdown("</div>", unsafe_allow_html=True)
-        
-        with col3:
-            st.markdown("<div class='card'>", unsafe_allow_html=True)
-            st.image("https://img.icons8.com/color/96/000000/survey.png", width=50)
-            st.markdown("### Anonymous Incident Reporting")
-            st.markdown("Securely report incidents and connect with community support")
-            st.button("Go to Incident Reporting", key="goto_reporting", on_click=lambda: st.session_state.update({"page": "📝 Anonymous Incident Reporting"}))
-            st.markdown("</div>", unsafe_allow_html=True)
-        
-        with col4:
-            st.markdown("<div class='card'>", unsafe_allow_html=True)
-            st.image("https://img.icons8.com/color/96/000000/location.png", width=50)
-            st.markdown("### Live Location Tracking")
-            st.markdown("Share your real-time location with trusted contacts")
-            st.button("Go to Location Tracking", key="goto_location", on_click=lambda: st.session_state.update({"page": "📍 Live Location Tracking"}))
-            st.markdown("</div>", unsafe_allow_html=True)
-        
-        # Safety statistics
-        st.markdown("<h2 class='sub-header'>Safety Overview</h2>", unsafe_allow_html=True)
-        
-        # Sample data for demonstration
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Active Alerts", "3", "-1")
-        col2.metric("Reported Incidents", "12", "+2")
-        col3.metric("Safe Journeys", "28", "+5")
-        col4.metric("Community Volunteers", "15", "+3")
-        
-        # Sample map
-        st.markdown("<h2 class='sub-header'>Safety Map</h2>", unsafe_allow_html=True)
-        
-        # Get current location
-        location_data = get_current_location()
-        
-        # Create a map centered at user's location
-        m = get_map(st.session_state.user_location["latitude"], 
-                   st.session_state.user_location["longitude"])
-        
-        # Add user marker
-        folium.Marker(
-            location=[st.session_state.user_location["latitude"], 
-                     st.session_state.user_location["longitude"]],
-            popup="Your Location",
-            icon=folium.Icon(color="blue", icon="user")
-        ).add_to(m)
-        
-        # Add some sample data points
-        folium.Circle(
-            location=[st.session_state.user_location["latitude"], 
-                     st.session_state.user_location["longitude"]],
-            radius=500,
-            color='green',
-            fill=True,
-            fill_opacity=0.2,
-            tooltip='Safe Area'
-        ).add_to(m)
-        
-        folium.Circle(
-            location=[st.session_state.user_location["latitude"] - 0.005, 
-                     st.session_state.user_location["longitude"] - 0.01],
-            radius=300,
-            color='red',
-            fill=True,
-            fill_opacity=0.2,
-            tooltip='High Risk Area'
-        ).add_to(m)
-        
-        folium.Circle(
-            location=[st.session_state.user_location["latitude"] + 0.003, 
-                     st.session_state.user_location["longitude"] - 0.005],
-            radius=400,
-            color='orange',
-            fill=True,
-            fill_opacity=0.2,
-            tooltip='Medium Risk Area'
-        ).add_to(m)
-        
-        # Display the map
-        folium_static(m)
-        
-        # Recent activity
-        st.markdown("<h2 class='sub-header'>Recent Activity</h2>", unsafe_allow_html=True)
-        
-        # Sample activity data
-        activities = [
-            {"time": "10 min ago", "type": "Alert", "description": "Suspicious person reported near Central Park"},
-            {"time": "25 min ago", "type": "Journey", "description": "Safe journey completed from College St to Park Street"},
-            {"time": "1 hour ago", "type": "Report", "description": "Incident report verified by 3 community members"},
-            {"time": "2 hours ago", "type": "Alert", "description": "Alert resolved: Area now safe"}
-        ]
-        
-        for activity in activities:
-            st.markdown(f"**{activity['time']}** - {activity['type']}: {activity['description']}")
+    # Get current location
+    if st.button("Update My Location"):
+        with st.spinner("Getting your location..."):
+            location_data = get_current_location()
+            if location_data:
+                st.success(f"Location updated: {location_data['latitude']:.4f}, {location_data['longitude']:.4f}")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        st.image("https://img.icons8.com/color/96/000000/siren.png", width=50)
+        st.markdown("### Emergency Alert System")
+        st.markdown("Real-time alerts for security threats and emergencies")
+        st.button("Go to Emergency Alerts", key="goto_alerts", on_click=lambda: st.session_state.update({"page": "🚨 Emergency Alert System"}))
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        st.image("https://img.icons8.com/color/96/000000/compass.png", width=50)
+        st.markdown("### Personalized Safety Navigator")
+        st.markdown("AI-driven assistant for safe navigation and real-time guidance")
+        st.button("Go to Safety Navigator", key="goto_navigator", on_click=lambda: st.session_state.update({"page": "🧭 Personalized Safety Navigator"}))
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        st.image("https://img.icons8.com/color/96/000000/survey.png", width=50)
+        st.markdown("### Anonymous Incident Reporting")
+        st.markdown("Securely report incidents and connect with community support")
+        st.button("Go to Incident Reporting", key="goto_reporting", on_click=lambda: st.session_state.update({"page": "📝 Anonymous Incident Reporting"}))
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+    with col4:
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        st.image("https://img.icons8.com/color/96/000000/location.png", width=50)
+        st.markdown("### Live Location Tracking")
+        st.markdown("Share your real-time location with trusted contacts")
+        st.button("Go to Location Tracking", key="goto_location", on_click=lambda: st.session_state.update({"page": "📍 Live Location Tracking"}))
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+    # Safety statistics
+    st.markdown("<h2 class='sub-header'>Safety Overview</h2>", unsafe_allow_html=True)
+    
+    # Sample data for demonstration
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Active Alerts", "3", "-1")
+    col2.metric("Reported Incidents", "12", "+2")
+    col3.metric("Safe Journeys", "28", "+5")
+    col4.metric("Community Volunteers", "15", "+3")
+    
+    # Sample map
+    st.markdown("<h2 class='sub-header'>Safety Map</h2>", unsafe_allow_html=True)
+    
+    # Get current location
+    location_data = get_current_location()
+    
+    # Create a map centered at user's location
+    m = get_map(st.session_state.user_location["latitude"], 
+               st.session_state.user_location["longitude"])
+    
+    # Add user marker
+    folium.Marker(
+        location=[st.session_state.user_location["latitude"], 
+                 st.session_state.user_location["longitude"]],
+        popup="Your Location",
+        icon=folium.Icon(color="blue", icon="user")
+    ).add_to(m)
+    
+    # Add some sample data points
+    folium.Circle(
+        location=[st.session_state.user_location["latitude"], 
+                 st.session_state.user_location["longitude"]],
+        radius=500,
+        color='green',
+        fill=True,
+        fill_opacity=0.2,
+        tooltip='Safe Area'
+    ).add_to(m)
+    
+    folium.Circle(
+        location=[st.session_state.user_location["latitude"] - 0.005, 
+                 st.session_state.user_location["longitude"] - 0.01],
+        radius=300,
+        color='red',
+        fill=True,
+        fill_opacity=0.2,
+        tooltip='High Risk Area'
+    ).add_to(m)
+    
+    folium.Circle(
+        location=[st.session_state.user_location["latitude"] + 0.003, 
+                 st.session_state.user_location["longitude"] - 0.005],
+        radius=400,
+        color='orange',
+        fill=True,
+        fill_opacity=0.2,
+        tooltip='Medium Risk Area'
+    ).add_to(m)
+    
+    # Display the map
+    folium_static(m)
+    
+    # Recent activity
+    st.markdown("<h2 class='sub-header'>Recent Activity</h2>", unsafe_allow_html=True)
+    
+    # Sample activity data
+    activities = [
+        {"time": "10 min ago", "type": "Alert", "description": "Suspicious person reported near Central Park"},
+        {"time": "25 min ago", "type": "Journey", "description": "Safe journey completed from College St to Park Street"},
+        {"time": "1 hour ago", "type": "Report", "description": "Incident report verified by 3 community members"},
+        {"time": "2 hours ago", "type": "Alert", "description": "Alert resolved: Area now safe"}
+    ]
+    
+    for activity in activities:
+        st.markdown(f"**{activity['time']}** - {activity['type']}: {activity['description']}")
 
 # Live Location Tracking page
-elif page == "📍 Live Location Tracking" and handlers:
+elif page == "📍 Live Location Tracking":
     st.markdown("<h2 class='sub-header'>Live Location Tracking</h2>", unsafe_allow_html=True)
     
     # If tracking is active, update location periodically
@@ -963,7 +783,7 @@ elif page == "📍 Live Location Tracking" and handlers:
             st.info("No location history available. Start location tracking to record your movements.")
 
 # Emergency Alert System page
-elif page == "🚨 Emergency Alert System" and handlers:
+elif page == "🚨 Emergency Alert System":
     st.markdown("<h2 class='sub-header'>Emergency Alert System</h2>", unsafe_allow_html=True)
     
     tabs = st.tabs(["Create Alert", "View Alerts", "Verify Alerts"])
@@ -1159,7 +979,7 @@ elif page == "🚨 Emergency Alert System" and handlers:
             st.info("No alerts available for verification.")
 
 # Personalized Safety Navigator page
-elif page == "🧭 Personalized Safety Navigator" and handlers:
+elif page == "🧭 Personalized Safety Navigator":
     st.markdown("<h2 class='sub-header'>Personalized Safety Navigator</h2>", unsafe_allow_html=True)
     
     tabs = st.tabs(["Start Journey", "Active Journey", "Emergency"])
@@ -1731,7 +1551,7 @@ elif page == "🧭 Personalized Safety Navigator" and handlers:
                     st.error("Failed to send emergency alert. Please try again.")
 
 # Anonymous Incident Reporting page
-elif page == "📝 Anonymous Incident Reporting" and handlers:
+elif page == "📝 Anonymous Incident Reporting":
     st.markdown("<h2 class='sub-header'>Anonymous Incident Reporting</h2>", unsafe_allow_html=True)
     
     tabs = st.tabs(["Submit Report", "View Reports", "Get Support"])
@@ -1967,7 +1787,7 @@ elif page == "📝 Anonymous Incident Reporting" and handlers:
             """, unsafe_allow_html=True)
 
 # Emergency Contacts page
-elif page == "👥 Emergency Contacts" and handlers:
+elif page == "👥 Emergency Contacts":
     st.markdown("<h2 class='sub-header'>Emergency Contacts</h2>", unsafe_allow_html=True)
     
     # Get emergency contacts from database
@@ -2054,7 +1874,7 @@ elif page == "👥 Emergency Contacts" and handlers:
         st.warning("Please add emergency contacts before testing the SOS alert.")
 
 # Settings page
-elif page == "⚙️ Settings" and handlers:
+elif page == "⚙️ Settings":
     st.markdown("<h2 class='sub-header'>Settings</h2>", unsafe_allow_html=True)
     
     # User profile settings
@@ -2160,7 +1980,3 @@ elif page == "⚙️ Settings" and handlers:
         st.success("Application data reset successfully!")
         st.rerun()
 
-else:
-    if page != "🏠 Home":
-        st.error("Please initialize the AI agents first.")
-        st.button("Go to Home", on_click=lambda: st.session_state.update({"page": "🏠 Home"}))
