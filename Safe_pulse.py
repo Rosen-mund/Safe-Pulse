@@ -24,7 +24,7 @@ from sms_service import SMSService
 
 # Set page configuration
 st.set_page_config(
-    page_title="Women Safety AI Agents",
+    page_title="SAFE PULSE",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -120,7 +120,7 @@ def get_map(center_lat, center_lng, zoom=13):
     m = folium.Map(
         location=[center_lat, center_lng],
         zoom_start=zoom,
-        tiles="OpenStreetMap"  # Explicitly use OpenStreetMap tiles
+        tiles="OpenStreetMap"  
     )
     return m
 
@@ -445,7 +445,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # App header
-st.markdown("<h1 class='main-header'>Women Safety AI Agents</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-header'>Safe Pulse</h1>", unsafe_allow_html=True)
 
 # Sidebar
 with st.sidebar:
@@ -543,12 +543,12 @@ handlers = get_agents_and_handlers() if st.session_state.agents_initialized else
 
 # Home page
 if page == "🏠 Home":
-    st.markdown("<h2 class='sub-header'>Welcome to Women Safety AI Agents</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 class='sub-header'>Welcome to Safe Pulse</h2>", unsafe_allow_html=True)
     
     if not st.session_state.agents_initialized:
         st.info("Please click 'Initialize AI Agents' in the sidebar to access all features.")
         
-        st.markdown("### About Women Safety AI Agents")
+        st.markdown("### About Safe Pulse")
         st.markdown("""
         This application provides three AI-powered safety features:
         
