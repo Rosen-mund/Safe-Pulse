@@ -79,3 +79,4 @@ The system leverages AI agents created on the Aixplain platform, uses Twilio for
 - **Streamlit**: Web interface for user interaction
 - **Folium**: Map-based safety visualization
 
+Deployed Link : [{ https://safe-pulse.streamlit.app/}] 
